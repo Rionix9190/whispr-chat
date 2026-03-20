@@ -1,7 +1,7 @@
 {
   "name": "whispr-chat",
-  "version": "1.0.0",
-  "description": "Anonymous stranger chat — say what you can't in real life",
+  "version": "2.0.0",
+  "description": "Anonymous stranger chat with profiles, gender matching, and stats",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
