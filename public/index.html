@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Whispr — Say what you can't</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #17171f;
+    --border: rgba(255,255,255,0.07);
+    --border-lit: rgba(255,255,255,0.14);
+    --text: #e8e6f0;
+    --muted: #6b6880;
+    --dim: #3a3850;
+    --accent: #9b7cf8;
+    --accent-glow: rgba(155, 124, 248, 0.18);
+    --accent2: #f87c9b;
+    --accent2-glow: rgba(248, 124, 155, 0.12);
+    --warn: #f8c47c;
+    --green: #7cf8b8;
+    --bubble-you: #1e1830;
+    --bubble-them: #171720;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ─── NOISE TEXTURE ─── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  /* ─── LAYOUT ─── */
+  #app {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    height: 100vh; max-width: 720px;
+    margin: 0 auto;
+    padding: 0 0 env(safe-area-inset-bottom, 0);
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px; font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #9b7cf8 0%, #f87c9b 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .logo span { font-weight: 400; font-size: 12px; letter-spacing: 0.08em; -webkit-text-fill-color: var(--muted); color: var(--muted); display: block; margin-top: -2px; }
+
+  #status-pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 20px;
+    border: 1px solid var(--border);
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    color: var(--muted); background: var(--surface);
+    transition: all 0.3s;
+  }
+  #status-pill.connected { border-color: rgba(124, 248, 184, 0.3); color: var(--green); }
+  #status-pill.waiting { border-color: rgba(248, 196, 124, 0.25); color: var(--warn); }
+
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100%{ opacity: 1; transform: scale(1); }
+    50%{ opacity: 0.5; transform: scale(0.7); }
+  }
+  #status-pill.connected .dot { animation: none; }
+
+  /* ─── SPLASH SCREEN ─── */
+  #splash {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 24px; text-align: center;
+    gap: 24px;
+  }
+
+  .splash-orb {
+    width: 90px; height: 90px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #c4a8ff, #9b7cf8 50%, #5b3fd4);
+    box-shadow: 0 0 60px rgba(155,124,248,0.35), 0 0 120px rgba(155,124,248,0.1);
+    animation: float 4s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100%{ transform: translateY(0px); }
+    50%{ transform: translateY(-10px); }
+  }
+
+  .splash-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px; font-weight: 800;
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  .splash-title em {
+    font-style: normal;
+    background: linear-gradient(135deg, #9b7cf8, #f87c9b);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .splash-sub {
+    color: var(--muted); font-size: 13px; max-width: 340px; line-height: 1.7;
+  }
+
+  .tags {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    max-width: 380px;
+  }
+  .tag {
+    padding: 5px 13px; border-radius: 20px;
+    border: 1px solid var(--border-lit);
+    font-size: 11px; color: var(--muted);
+    background: var(--surface);
+    font-family: 'DM Mono', monospace;
+  }
+
+  #start-btn {
+    margin-top: 8px;
+    padding: 14px 40px; border-radius: 40px;
+    border: none; cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px; font-weight: 700;
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, #9b7cf8 0%, #f87c9b 100%);
+    color: #fff;
+    box-shadow: 0 0 30px rgba(155,124,248,0.4);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  #start-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 40px rgba(155,124,248,0.55); }
+  #start-btn:active { transform: translateY(0); }
+
+  .disclaimer {
+    font-size: 10px; color: var(--dim);
+    max-width: 320px; line-height: 1.6;
+  }
+
+  /* ─── WAITING SCREEN ─── */
+  #waiting-screen {
+    flex: 1; display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px; text-align: center; padding: 40px 24px;
+  }
+
+  .radar {
+    width: 80px; height: 80px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .radar-ring {
+    position: absolute; border-radius: 50%;
+    border: 1px solid var(--accent);
+    animation: radar-expand 2s ease-out infinite;
+  }
+  .radar-ring:nth-child(1) { width: 20px; height: 20px; animation-delay: 0s; }
+  .radar-ring:nth-child(2) { width: 40px; height: 40px; animation-delay: 0.5s; }
+  .radar-ring:nth-child(3) { width: 60px; height: 60px; animation-delay: 1s; }
+  .radar-ring:nth-child(4) { width: 80px; height: 80px; animation-delay: 1.5s; }
+  @keyframes radar-expand {
+    0%{ opacity: 1; transform: scale(0.3); }
+    100%{ opacity: 0; transform: scale(1); }
+  }
+  .radar-core {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    z-index: 1;
+  }
+
+  .waiting-text {
+    font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 600;
+    color: var(--text);
+  }
+  .waiting-sub { font-size: 12px; color: var(--muted); }
+
+  #cancel-btn {
+    padding: 9px 24px; border-radius: 20px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-lit);
+    color: var(--muted); font-family: 'DM Mono', monospace; font-size: 12px;
+    transition: all 0.2s;
+  }
+  #cancel-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ─── CHAT AREA ─── */
+  #chat-area {
+    flex: 1; display: none; flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Chat info bar */
+  #chat-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .stranger-label {
+    font-size: 12px; color: var(--muted);
+  }
+  .stranger-label strong {
+    color: var(--accent); font-weight: 400;
+  }
+
+  #next-btn {
+    padding: 7px 18px; border-radius: 16px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-lit);
+    color: var(--muted); font-family: 'DM Mono', monospace; font-size: 11px;
+    transition: all 0.2s;
+  }
+  #next-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Messages */
+  #messages {
+    flex: 1; overflow-y: auto; padding: 20px 20px 10px;
+    display: flex; flex-direction: column; gap: 8px;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 3px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 3px; }
+
+  .msg {
+    max-width: 78%; animation: msg-in 0.2s ease-out;
+  }
+  @keyframes msg-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .msg.you { align-self: flex-end; }
+  .msg.them { align-self: flex-start; }
+
+  .bubble {
+    padding: 10px 14px; border-radius: 16px;
+    font-size: 13.5px; line-height: 1.55;
+    word-break: break-word;
+  }
+  .msg.you .bubble {
+    background: var(--bubble-you);
+    border: 1px solid rgba(155,124,248,0.2);
+    border-bottom-right-radius: 4px;
+    color: var(--text);
+  }
+  .msg.them .bubble {
+    background: var(--bubble-them);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    color: var(--text);
+  }
+  .msg-time {
+    font-size: 10px; color: var(--dim); margin-top: 3px;
+  }
+  .msg.you .msg-time { text-align: right; }
+
+  /* System messages */
+  .sys-msg {
+    align-self: center;
+    font-size: 11px; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 5px 14px; border-radius: 20px;
+    font-family: 'DM Mono', monospace;
+    animation: msg-in 0.3s ease-out;
+  }
+  .sys-msg.warn { color: var(--accent2); border-color: rgba(248,124,155,0.2); }
+  .sys-msg.good { color: var(--green); border-color: rgba(124,248,184,0.2); }
+
+  /* Typing indicator */
+  #typing-indicator {
+    display: none; align-items: center; gap: 6px;
+    padding: 4px 20px 8px;
+    font-size: 11px; color: var(--muted);
+    flex-shrink: 0;
+  }
+  #typing-indicator.visible { display: flex; }
+  .typing-dots span {
+    display: inline-block; width: 4px; height: 4px;
+    background: var(--muted); border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  .typing-dots span:nth-child(2){ animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3){ animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%,60%,100%{ transform: translateY(0); }
+    30%{ transform: translateY(-4px); }
+  }
+
+  /* ─── INPUT BAR ─── */
+  #input-bar {
+    display: none; align-items: flex-end; gap: 10px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+
+  #msg-input {
+    flex: 1; resize: none; overflow: hidden;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 12px;
+    padding: 10px 14px; font-family: 'DM Mono', monospace;
+    font-size: 13.5px; line-height: 1.5;
+    outline: none; transition: border-color 0.2s;
+    max-height: 120px; min-height: 42px;
+  }
+  #msg-input::placeholder { color: var(--dim); }
+  #msg-input:focus { border-color: var(--border-lit); }
+
+  #send-btn {
+    width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(135deg, #9b7cf8 0%, #c47cf8 100%);
+    border: none; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  #send-btn:hover { transform: scale(1.05); }
+  #send-btn:active { transform: scale(0.95); }
+  #send-btn svg { width: 18px; height: 18px; fill: white; }
+
+  /* ─── DISCONNECTED OVERLAY ─── */
+  #disconnected-banner {
+    display: none; align-items: center; justify-content: space-between;
+    padding: 10px 20px; flex-shrink: 0;
+    background: rgba(248,124,155,0.08);
+    border-top: 1px solid rgba(248,124,155,0.2);
+  }
+  #disconnected-banner.visible { display: flex; }
+  #disconnected-banner span { font-size: 12px; color: var(--accent2); }
+  #new-chat-btn {
+    padding: 7px 18px; border-radius: 16px; cursor: pointer;
+    background: transparent; border: 1px solid rgba(248,124,155,0.4);
+    color: var(--accent2); font-family: 'DM Mono', monospace; font-size: 11px;
+    transition: all 0.2s;
+  }
+  #new-chat-btn:hover { background: rgba(248,124,155,0.1); }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 480px) {
+    .splash-title { font-size: 26px; }
+    #start-btn { padding: 13px 32px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">
+      whispr
+      <span>anonymous · unrestricted · real</span>
+    </div>
+    <div id="status-pill" class="waiting">
+      <div class="dot"></div>
+      <span id="status-text">offline</span>
+    </div>
+  </header>
+
+  <!-- SPLASH -->
+  <div id="splash">
+    <div class="splash-orb"></div>
+    <div>
+      <div class="splash-title">Say what you<br/><em>can't say</em> out loud.</div>
+    </div>
+    <div class="splash-sub">
+      A space for anonymous strangers to have real conversations — the kind that don't happen anywhere else.
+    </div>
+    <div class="tags">
+      <span class="tag">vent freely</span>
+      <span class="tag">taboo topics</span>
+      <span class="tag">deep talks</span>
+      <span class="tag">confessions</span>
+      <span class="tag">no judgement</span>
+      <span class="tag">completely anonymous</span>
+    </div>
+    <button id="start-btn">Find a Stranger →</button>
+    <div class="disclaimer">
+      No accounts. No logs. No names.<br/>You're just two strangers in the dark.
+    </div>
+  </div>
+
+  <!-- WAITING -->
+  <div id="waiting-screen">
+    <div class="radar">
+      <div class="radar-ring"></div>
+      <div class="radar-ring"></div>
+      <div class="radar-ring"></div>
+      <div class="radar-ring"></div>
+      <div class="radar-core"></div>
+    </div>
+    <div class="waiting-text">Searching the void...</div>
+    <div class="waiting-sub">Finding someone who needs to talk</div>
+    <button id="cancel-btn">Cancel</button>
+  </div>
+
+  <!-- CHAT -->
+  <div id="chat-area">
+    <div id="chat-bar">
+      <div class="stranger-label">chatting with <strong>a stranger</strong></div>
+      <button id="next-btn">Next stranger ⟶</button>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="typing-indicator">
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+      stranger is typing...
+    </div>
+
+    <div id="disconnected-banner">
+      <span>Stranger has left the chat.</span>
+      <button id="new-chat-btn">Find someone new</button>
+    </div>
+  </div>
+
+  <div id="input-bar">
+    <textarea id="msg-input" placeholder="Type something honest..." rows="1"></textarea>
+    <button id="send-btn">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  // State
+  let state = 'splash'; // splash | waiting | chatting | disconnected
+  let typingTimer = null;
+  let isTyping = false;
+
+  // Elements
+  const splash = document.getElementById('splash');
+  const waitingScreen = document.getElementById('waiting-screen');
+  const chatArea = document.getElementById('chat-area');
+  const inputBar = document.getElementById('input-bar');
+  const messages = document.getElementById('messages');
+  const msgInput = document.getElementById('msg-input');
+  const typingIndicator = document.getElementById('typing-indicator');
+  const disconnectedBanner = document.getElementById('disconnected-banner');
+  const statusPill = document.getElementById('status-pill');
+  const statusText = document.getElementById('status-text');
+
+  // ── SHOW SCREEN ──
+  function showScreen(s) {
+    state = s;
+    splash.style.display = 'none';
+    waitingScreen.style.display = 'none';
+    chatArea.style.display = 'none';
+    inputBar.style.display = 'none';
+    disconnectedBanner.classList.remove('visible');
+
+    if (s === 'splash') {
+      splash.style.display = 'flex';
+    } else if (s === 'waiting') {
+      waitingScreen.style.display = 'flex';
+    } else if (s === 'chatting') {
+      chatArea.style.display = 'flex';
+      inputBar.style.display = 'flex';
+      msgInput.focus();
+    } else if (s === 'disconnected') {
+      chatArea.style.display = 'flex';
+      inputBar.style.display = 'flex';
+      disconnectedBanner.classList.add('visible');
+    }
+  }
+
+  // ── STATUS PILL ──
+  function setStatus(type, text) {
+    statusPill.className = type;
+    statusText.textContent = text;
+    const dot = statusPill.querySelector('.dot');
+    if (type === 'connected') {
+      dot.style.animation = 'none';
+    } else {
+      dot.style.animation = '';
+    }
+  }
+
+  // ── ADD MESSAGE ──
+  function addMessage(text, from, timestamp) {
+    const el = document.createElement('div');
+    el.className = `msg ${from}`;
+    const time = new Date(timestamp || Date.now());
+    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = `<div class="bubble">${escapeHtml(text)}</div><div class="msg-time">${timeStr}</div>`;
+    messages.appendChild(el);
+    scrollToBottom();
+  }
+
+  function addSysMsg(text, type = '') {
+    const el = document.createElement('div');
+    el.className = `sys-msg ${type}`;
+    el.textContent = text;
+    messages.appendChild(el);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
+
+  function clearMessages() {
+    messages.innerHTML = '';
+    typingIndicator.classList.remove('visible');
+  }
+
+  // ── SOCKET EVENTS ──
+  socket.on('connect', () => {
+    setStatus('waiting', 'connected');
+  });
+
+  socket.on('disconnect', () => {
+    setStatus('', 'offline');
+  });
+
+  socket.on('status', ({ type, message }) => {
+    if (type === 'waiting') {
+      setStatus('waiting', 'searching...');
+      if (state !== 'splash') showScreen('waiting');
+    }
+  });
+
+  socket.on('matched', ({ message }) => {
+    setStatus('connected', 'connected');
+    clearMessages();
+    showScreen('chatting');
+    addSysMsg('You are now chatting with a stranger.', 'good');
+    addSysMsg('Remember: total anonymity. Be real. Be kind (or not).');
+  });
+
+  socket.on('message', ({ text, from, timestamp }) => {
+    addMessage(text, 'them', timestamp);
+    typingIndicator.classList.remove('visible');
+  });
+
+  socket.on('typing', ({ isTyping }) => {
+    if (isTyping) {
+      typingIndicator.classList.add('visible');
+    } else {
+      typingIndicator.classList.remove('visible');
+    }
+    scrollToBottom();
+  });
+
+  socket.on('stranger_left', ({ message }) => {
+    setStatus('', 'disconnected');
+    typingIndicator.classList.remove('visible');
+    addSysMsg('Stranger has disconnected.', 'warn');
+    showScreen('disconnected');
+  });
+
+  // ── SEND MESSAGE ──
+  function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || state !== 'chatting') return;
+
+    socket.emit('message', { text });
+    addMessage(text, 'you', Date.now());
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+
+    // Stop typing signal
+    socket.emit('typing', false);
+    isTyping = false;
+    clearTimeout(typingTimer);
+  }
+
+  // ── TYPING DETECTION ──
+  msgInput.addEventListener('input', () => {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
+
+    if (!isTyping) {
+      socket.emit('typing', true);
+      isTyping = true;
+    }
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+      socket.emit('typing', false);
+      isTyping = false;
+    }, 1500);
+  });
+
+  msgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // ── BUTTONS ──
+  document.getElementById('start-btn').addEventListener('click', () => {
+    showScreen('waiting');
+    socket.emit('next');
+  });
+
+  document.getElementById('send-btn').addEventListener('click', sendMessage);
+
+  document.getElementById('next-btn').addEventListener('click', () => {
+    clearMessages();
+    showScreen('waiting');
+    socket.emit('next');
+  });
+
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    showScreen('splash');
+    setStatus('', 'idle');
+  });
+
+  document.getElementById('new-chat-btn').addEventListener('click', () => {
+    clearMessages();
+    showScreen('waiting');
+    socket.emit('next');
+  });
+</script>
+</body>
+</html>
